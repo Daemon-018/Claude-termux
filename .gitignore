@@ -1,0 +1,14 @@
+# Large files
+bin/claude
+musl/aarch64-linux-musl-cross/
+
+# Temp files
+*.pyc
+__pycache__/
+.pytest_cache/
+
+# Proxy PID file
+.proxy.pid
+
+# Test output
+/tmp/test_out.txt
