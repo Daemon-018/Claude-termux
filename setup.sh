@@ -1,12 +1,8 @@
 #!/bin/bash
 # Claude Code + Ollama Setup for Android/Termux
-# 
-# This script sets up everything needed to run Claude Code on Android/Termux
-# using Ollama cloud models as the backend.
 #
-# After setup, run:
-#   ollama serve &
-#   claude
+# This script sets up everything needed to run Claude Code on Android/Termux
+# using Ollama cloud models as the backend via the translation proxy.
 
 set -e
 
@@ -37,6 +33,8 @@ fi
 
 info "Platform: Android/Termux ($ARCH)"
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # Step 1: Install dependencies
 echo ""
 echo "----------------------------------------------"
@@ -52,106 +50,87 @@ fi
 
 if ! command -v node &> /dev/null; then
   info "Installing Node.js..."
-  pkg install -y node
+  pkg install -y nodejs
 fi
 
-if ! command -v gcc &> /dev/null; then
-  info "Installing build tools..."
-  pkg install -y clang make
+if ! command -v python3 &> /dev/null; then
+  info "Installing Python 3..."
+  pkg install -y python
 fi
 
-# Step 2: Install Claude Code
+# Step 2: Install Claude Code binary
 echo ""
 echo "----------------------------------------------"
-echo "Step 2: Installing Claude Code"
+echo "Step 2: Installing Claude Code binary"
 echo "----------------------------------------------"
 
-if [ ! -f "/data/data/com.termux/files/usr/lib/node_modules/@anthropic-ai/claude-code-linux-arm64-musl/claude" ]; then
-  info "Installing Claude Code (this takes 1-2 minutes)..."
-  npm install -g @anthropic-ai/claude-code
-else
-  info "Claude Code already installed"
+if [ ! -f "$SCRIPT_DIR/bin/claude" ]; then
+  info "Downloading Claude Code (musl ARM64)..."
+  cd "$SCRIPT_DIR"
+  mkdir -p bin
+  # Download from npm registry
+  VERSION=$(npm view @anthropic-ai/claude-code version 2>/dev/null || echo "2.1.209")
+  TARBALL_URL=$(npm view @anthropic-ai/claude-code dist.tarball 2>/dev/null || echo "https://registry.npmjs.org/@anthropic-ai/claude-code/-/claude-code-2.1.209.tgz")
+  curl -sL "$TARBALL_URL" -o /tmp/claude.tgz
+  tar xzf /tmp/claude.tgz -C /tmp/
+  # Find binary inside tarball
+  find /tmp/package -name "claude" -type f | head -1 | while read f; do
+    cp "$f" "$SCRIPT_DIR/bin/claude"
+    chmod +x "$SCRIPT_DIR/bin/claude"
+  done
+  rm -rf /tmp/package /tmp/claude.tgz
+  info "Claude Code binary installed"
 fi
 
-# Step 3: Create statx compatibility shim
+# Step 3: Setup musl libc runtime
 echo ""
 echo "----------------------------------------------"
-echo "Step 3: Creating statx compatibility shim"
+echo "Step 3: Setting up musl libc runtime"
 echo "----------------------------------------------"
 
-SHIM_SRC="/data/data/com.termux/files/home/statx_shim.c"
-SHIM_OUT="/data/data/com.termux/files/home/statx_pure.so"
+if [ ! -d "$SCRIPT_DIR/musl-libc" ]; then
+  info "Setting up musl libc..."
+  cd "$SCRIPT_DIR"
+  mkdir -p musl-libc
 
-if [ ! -f "$SHIM_OUT" ]; then
-  info "Compiling statx shim..."
-  cat > "$SHIM_SRC" << 'CEOF'
-/* statx compatibility shim for Android/Termux
- * The musl libc on Termux is missing the statx syscall (number 332)
- * which Claude Code requires. This shim provides it directly.
- */
-#include <sys/syscall.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <linux/stat.h>
-#include <stdint.h>
-#include <dirent.h>
-
-struct statx_timestamp {
-    int64_t tv_sec;
-    uint32_t tv_nsec;
-    int32_t __reserved;
-};
-
-struct statx {
-    uint32_t stx_mask;
-    uint32_t stx_blksize;
-    uint64_t stx_attributes;
-    uint32_t stx_nlink;
-    uint32_t stx_uid;
-    uint32_t stx_gid;
-    uint16_t stx_mode;
-    uint16_t __spare0[1];
-    uint64_t stx_ino;
-    uint64_t stx_size;
-    uint64_t stx_blocks;
-    uint64_t stx_attributes_mask;
-    struct statx_timestamp stx_atime;
-    struct statx_timestamp stx_btime;
-    struct statx_timestamp stx_ctime;
-    struct statx_timestamp stx_mtime;
-    uint32_t stx_rdev_major;
-    uint32_t stx_rdev_minor;
-    uint32_t stx_dev_major;
-    uint32_t stx_dev_minor;
-    uint64_t __spare2[14];
-};
-
-int statx(int dirfd, const char *pathname, unsigned int flags, unsigned int mask, struct statx *buf) {
-    return syscall(268, dirfd, pathname, flags, mask, buf);
-}
-CEOF
-  clang -shared -fPIC -o "$SHIM_OUT" "$SHIM_SRC"
-  rm -f "$SHIM_SRC"
-  info "statx shim created: $SHIM_OUT"
-else
-  info "statx shim already exists"
+  # Download musl libc for ARM64
+  curl -sL "https://musl.cc/aarch64-linux-musl-cross.tgz" -o /tmp/musl.tgz
+  tar xzf /tmp/musl.tgz -C /tmp/
+  cp /tmp/aarch64-linux-musl-cross/lib/libc.so musl-libc/
+  ln -sf libc.so musl-libc/ld-musl-aarch64.so.1
+  ln -sf libc.so musl-libc/libc.musl-aarch64.so.1
+  rm -rf /tmp/aarch64-linux-musl-cross /tmp/musl.tgz
+  info "musl libc ready"
 fi
 
-# Step 4: Create launcher
+# Step 4: Compile statx shim
 echo ""
 echo "----------------------------------------------"
-echo "Step 4: Creating launcher"
+echo "Step 4: Compiling statx shim"
 echo "----------------------------------------------"
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ ! -f "$SCRIPT_DIR/statx_pure.so" ]; then
+  info "Compiling statx compatibility shim..."
+  gcc -shared -fPIC -o "$SCRIPT_DIR/statx_pure.so" "$SCRIPT_DIR/statx_shim.c" 2>/dev/null || \
+  clang -shared -fPIC -o "$SCRIPT_DIR/statx_pure.so" "$SCRIPT_DIR/statx_shim.c" 2>/dev/null || \
+  aarch64-linux-musl-gcc -shared -fPIC -o "$SCRIPT_DIR/statx_pure.so" "$SCRIPT_DIR/statx_shim.c"
+  info "statx shim compiled"
+fi
+
+# Step 5: Install launcher
+echo ""
+echo "----------------------------------------------"
+echo "Step 5: Installing launcher"
+echo "----------------------------------------------"
+
 cp "$SCRIPT_DIR/claude" /data/data/com.termux/files/usr/bin/claude
 chmod +x /data/data/com.termux/files/usr/bin/claude
 info "Launcher installed at /usr/bin/claude"
 
-# Step 5: Pull models
+# Step 6: Pull Ollama models
 echo ""
 echo "----------------------------------------------"
-echo "Step 5: Pulling Ollama models"
+echo "Step 6: Pulling Ollama models"
 echo "----------------------------------------------"
 
 # Start Ollama if not running
@@ -161,37 +140,33 @@ if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
   sleep 5
 fi
 
-MODELS=("gemma4:31b-cloud" "nemotron-3-super:cloud" "minimax-m3:cloud" "glm-5.2:cloud")
+# Read models from models.json
+if [ -f "$SCRIPT_DIR/models/models.json" ]; then
+  MODELS=$(grep -o '"model": *"[^"]*"' "$SCRIPT_DIR/models/models.json" | cut -d'"' -f4)
+  for model in $MODELS; do
+    if ! ollama list | grep -q "$model"; then
+      info "Pulling $model..."
+      ollama pull "$model" || warn "Failed to pull $model"
+    else
+      info "$model already available"
+    fi
+  done
+fi
 
-for model in "${MODELS[@]}"; do
-  if ! ollama list | grep -q "$model"; then
-    info "Pulling $model..."
-    ollama pull "$model" || warn "Failed to pull $model (will try later)"
-  else
-    info "$model already available"
-  fi
-done
-
-# Step 6: Verify setup
+# Step 7: Verify
 echo ""
 echo "----------------------------------------------"
-echo "Step 6: Verification"
+echo "Step 7: Verification"
 echo "----------------------------------------------"
 
 info "Testing setup..."
-if echo "test" | LD_PRELOAD="$SHIM_OUT" claude -p "reply ok" --model gemma4:31b-cloud --max-turns 1 > /tmp/test_out.txt 2>&1; then
-  if grep -q -i "ok\|reply\|test\|hello\|hi" /tmp/test_out.txt; then
-    info "Claude Code is working!"
-  else
-    warn "Claude Code ran but output was unexpected"
-    cat /tmp/test_out.txt
-  fi
+if result=$(claude -p "reply OK in one word" 2>/dev/null); then
+  echo "$result"
+  info "Claude Code is working!"
 else
-  warn "Test failed - you may need to run 'ollama serve &' manually"
+  warn "Test failed - make sure ollama serve & is running"
 fi
-rm -f /tmp/test_out.txt
 
-# Summary
 echo ""
 echo "=============================================="
 echo "  Setup Complete!"
@@ -201,14 +176,9 @@ echo "Quick start:"
 echo "  ollama serve &"
 echo "  claude"
 echo ""
-echo "Available models:"
-echo "  gemma4:31b-cloud      (Google Gemma 4 31B)"
-echo "  nemotron-3-super:cloud (NVIDIA Nemotron 3)"
-echo "  minimax-m3:cloud      (MiniMax M3)"
-echo "  glm-5.2:cloud         (Zhipu GLM 5.2)"
+echo "One-shot:"
+echo "  claude -p \"Write a Python script\""
 echo ""
-echo "Switch models:"
-echo "  claude --model nemotron-3-super:cloud "your prompt""
+echo "Switch model:"
+echo "  claude --model llama3.3-70b-cloud -p \"explain recursion\""
 echo ""
-echo "Documentation: ./README.md"
-echo "=============================================="

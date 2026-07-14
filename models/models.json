@@ -1,16 +1,5 @@
 [
   {
-    "name": "nemotron-3-super:cloud",
-    "size": 345,
-    "context": 262144,
-    "capabilities": [
-      "completion",
-      "tools",
-      "thinking"
-    ],
-    "remote_host": "https://ollama.com:443"
-  },
-  {
     "name": "gemma4:31b-cloud",
     "size": 342,
     "context": 262144,
@@ -23,21 +12,30 @@
     "remote_host": "https://ollama.com:443"
   },
   {
-    "name": "minimax-m3:cloud",
-    "size": 362,
-    "context": 524288,
+    "name": "gemma4:8b-cloud",
+    "size": 88,
+    "context": 131072,
     "capabilities": [
       "completion",
-      "tools",
-      "thinking",
-      "vision"
+      "tools"
     ],
     "remote_host": "https://ollama.com:443"
   },
   {
-    "name": "glm-5.2:cloud",
-    "size": 338,
-    "context": 1000000,
+    "name": "llama3.3-70b-cloud",
+    "size": 395,
+    "context": 262144,
+    "capabilities": [
+      "completion",
+      "tools",
+      "thinking"
+    ],
+    "remote_host": "https://ollama.com:443"
+  },
+  {
+    "name": "qwen3-235b-cloud",
+    "size": 512,
+    "context": 1048576,
     "capabilities": [
       "completion",
       "tools",
