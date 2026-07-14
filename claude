@@ -10,7 +10,9 @@
 #
 # Default model: gemma4:31b-cloud
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Resolve script dir — handles symlinks from /usr/bin/claude → repo/claude
+SELF="$(readlink -f "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$SELF")" && pwd)"
 PROXY_PORT=11440
 PROXY_PID_FILE="$SCRIPT_DIR/.proxy.pid"
 
