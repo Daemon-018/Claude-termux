@@ -95,11 +95,8 @@ if [[ "$@" != *"--model"* ]] && [[ "$@" != *"-m"* ]]; then
 fi
 
 # Unset LD_PRELOAD for musl binary (Termux preload breaks it)
-unset LD_PRELOAD
-# Set LD_LIBRARY_PATH with musl libc first (for the binary only)
-export LD_LIBRARY_PATH="$MUSL_LIBDIR:${LD_LIBRARY_PATH:-}"
-
-exec "$SCRIPT_DIR/bin/claude" \
+# Run via musl's own ld loader — avoids LD_LIBRARY_PATH conflicts
+exec env -u LD_PRELOAD "$SCRIPT_DIR/musl-libc/ld-musl-aarch64.so.1" "$SCRIPT_DIR/bin/claude" \
   --bare \
   --dangerously-skip-permissions \
   --model gemma4:31b-cloud \
