@@ -14,11 +14,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROXY_PORT=11440
 PROXY_PID_FILE="$SCRIPT_DIR/.proxy.pid"
 
-# Unset Termux LD_PRELOAD (musl binary needs clean env)
-unset LD_PRELOAD
+# Save Termux LD_PRELOAD — needed for Python/proxy but must be unset for musl binary
+TERMUX_PRELOAD="${LD_PRELOAD:-}"
 
-# Set up musl libc for the binary
-export LD_LIBRARY_PATH="$SCRIPT_DIR/musl-libc:${LD_LIBRARY_PATH:-}"
+# Save original LD_LIBRARY_PATH — musl path breaks Termux Python
+MUSL_LIBDIR="$SCRIPT_DIR/musl-libc"
 export TERM="${TERM:-xterm-256color}"
 
 # Start proxy if not running
@@ -26,6 +26,9 @@ start_proxy() {
   if kill -0 "$(cat $PROXY_PID_FILE 2>/dev/null)" 2>/dev/null; then
     return 0
   fi
+
+  # Restore LD_PRELOAD for Python (Termux needs it)
+  export LD_PRELOAD="$TERMUX_PRELOAD"
 
   # Kill any leftover proxy on our port using Python (avoids coreutils
   # conflict with musl libc on Termux)
@@ -88,6 +91,11 @@ export ANTHROPIC_API_KEY="ollama-proxy"
 if [[ "$@" != *"--model"* ]] && [[ "$@" != *"-m"* ]]; then
   set -- --model gemma4:31b-cloud "$@"
 fi
+
+# Unset LD_PRELOAD for musl binary (Termux preload breaks it)
+unset LD_PRELOAD
+# Set LD_LIBRARY_PATH with musl libc first (for the binary only)
+export LD_LIBRARY_PATH="$MUSL_LIBDIR:${LD_LIBRARY_PATH:-}"
 
 exec "$SCRIPT_DIR/bin/claude" \
   --bare \
