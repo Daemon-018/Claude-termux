@@ -1,0 +1,38 @@
+=== Claude Code + Ollama for Termux - Installation ===
+
+Method 1: One-liner (easiest)
+-------------------------------
+
+Copy and paste this in Termux:
+
+curl -sSL https://github.com/termux-user/claude-termux/raw/main/setup.sh | bash
+
+
+Then:
+
+ollama serve &
+claude
+
+
+Method 2: Manual
+-----------------
+
+1. Download this folder to your device
+2. Open Termux
+3. Run: cd /storage/emulated/0/Download/claude-termux
+4. Run: bash setup.sh
+5. Run: ollama serve &
+6. Run: claude
+
+
+Method 3: Git
+--------------
+
+pkg install git
+git clone https://github.com/termux-user/claude-termux.git
+cd claude-termux
+bash setup.sh
+ollama serve &
+claude
+
+EOF

@@ -1,0 +1,22 @@
+#!/bin/bash
+# Claude Code launcher for Android/Termux
+# Uses Ollama as backend for cloud model access
+# 
+# Usage:
+#   claude                           # Interactive (default model)
+#   claude -p "prompt"               # Print mode
+#   claude --model <name> "prompt"  # Specific model
+#
+# Default model: gemma4:31b-cloud
+
+export CLAUDE_CODE_INSTALLED_VIA_NPM_WRAPPER="1"
+export LD_PRELOAD="/data/data/com.termux/files/home/statx_pure.so"
+export TERM="${TERM:-xterm-256color}"
+
+if [[ "$@" != *"--model"* ]] && [[ "$@" != *"-m"* ]]; then
+  set -- --model gemma4:31b-cloud "$@"
+fi
+
+exec /data/data/com.termux/files/usr/lib/ld-musl-aarch64.so.1 \
+  /data/data/com.termux/files/usr/lib/node_modules/@anthropic-ai/claude-code-linux-arm64-musl/claude \
+  --bare --dangerously-skip-permissions "$@"

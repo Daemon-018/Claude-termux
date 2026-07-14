@@ -1,0 +1,48 @@
+[
+  {
+    "name": "nemotron-3-super:cloud",
+    "size": 345,
+    "context": 262144,
+    "capabilities": [
+      "completion",
+      "tools",
+      "thinking"
+    ],
+    "remote_host": "https://ollama.com:443"
+  },
+  {
+    "name": "gemma4:31b-cloud",
+    "size": 342,
+    "context": 262144,
+    "capabilities": [
+      "completion",
+      "tools",
+      "vision",
+      "thinking"
+    ],
+    "remote_host": "https://ollama.com:443"
+  },
+  {
+    "name": "minimax-m3:cloud",
+    "size": 362,
+    "context": 524288,
+    "capabilities": [
+      "completion",
+      "tools",
+      "thinking",
+      "vision"
+    ],
+    "remote_host": "https://ollama.com:443"
+  },
+  {
+    "name": "glm-5.2:cloud",
+    "size": 338,
+    "context": 1000000,
+    "capabilities": [
+      "completion",
+      "tools",
+      "thinking"
+    ],
+    "remote_host": "https://ollama.com:443"
+  }
+]
