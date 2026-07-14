@@ -1,22 +1,73 @@
 #!/bin/bash
 # Claude Code launcher for Android/Termux
-# Uses Ollama as backend for cloud model access
-# 
+# Uses Ollama as backend via translation proxy
+#
 # Usage:
 #   claude                           # Interactive (default model)
 #   claude -p "prompt"               # Print mode
 #   claude --model <name> "prompt"  # Specific model
+#   claude "ask something"          # Interactive with initial prompt
 #
 # Default model: gemma4:31b-cloud
 
-export CLAUDE_CODE_INSTALLED_VIA_NPM_WRAPPER="1"
-export LD_PRELOAD="/data/data/com.termux/files/home/statx_pure.so"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROXY_PORT=11440
+PROXY_PID_FILE="$SCRIPT_DIR/.proxy.pid"
+
+# Unset Termux LD_PRELOAD (musl binary needs clean env)
+unset LD_PRELOAD
+
+# Set up musl libc for the binary
+export LD_LIBRARY_PATH="$SCRIPT_DIR/musl-libc:${LD_LIBRARY_PATH:-}"
 export TERM="${TERM:-xterm-256color}"
 
+# Start proxy if not running
+start_proxy() {
+  if kill -0 "$(cat $PROXY_PID_FILE 2>/dev/null)" 2>/dev/null; then
+    return 0
+  fi
+
+  # Kill any leftover proxy on our port
+  fuser -k "$PROXY_PORT/tcp" 2>/dev/null
+  sleep 0.5
+
+  # Start proxy in background
+  cd "$SCRIPT_DIR"
+  nohup python3 "$SCRIPT_DIR/proxy.py" > /dev/null 2>&1 &
+  echo $! > "$PROXY_PID_FILE"
+  sleep 1
+
+  # Verify proxy started
+  if curl -s "http://127.0.0.1:$PROXY_PORT/" >/dev/null 2>&1; then
+    echo "[claude-termux] Proxy started on port $PROXY_PORT" >&2
+  else
+    echo "[claude-termux] WARNING: Proxy may not have started" >&2
+  fi
+}
+
+# Handle cleanup on exit
+cleanup() {
+  if [[ -f "$PROXY_PID_FILE" ]]; then
+    kill "$(cat $PROXY_PID_FILE)" 2>/dev/null
+    rm -f "$PROXY_PID_FILE"
+  fi
+}
+trap cleanup EXIT
+
+# Auto-start proxy
+start_proxy
+
+# Set proxy as API endpoint
+export ANTHROPIC_BASE_URL="http://127.0.0.1:$PROXY_PORT"
+export ANTHROPIC_API_KEY="ollama-proxy"
+
+# Default model
 if [[ "$@" != *"--model"* ]] && [[ "$@" != *"-m"* ]]; then
   set -- --model gemma4:31b-cloud "$@"
 fi
 
-exec /data/data/com.termux/files/usr/lib/ld-musl-aarch64.so.1 \
-  /data/data/com.termux/files/usr/lib/node_modules/@anthropic-ai/claude-code-linux-arm64-musl/claude \
-  --bare --dangerously-skip-permissions "$@"
+exec "$SCRIPT_DIR/bin/claude" \
+  --bare \
+  --dangerously-skip-permissions \
+  --model gemma4:31b-cloud \
+  "$@"
